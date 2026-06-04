@@ -37,9 +37,10 @@ class TelcosmsDriver implements SmsDriverInterface
 
         $body = $response->json();
 
-        // A API devolve { "status": "success"|"error", "message": "..." }
+        // A API devolve { "status": "success"|200, "message": "..." }
+        $status  = $body['status'] ?? '';
         $success = $response->successful()
-            && strtolower($body['status'] ?? '') === 'success';
+            && (strtolower((string) $status) === 'success' || $status === 200);
 
         return [
             'success'  => $success,

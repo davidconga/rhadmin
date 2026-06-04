@@ -49,7 +49,7 @@ export default function Landing() {
 
       {/* Nav */}
       <header className="fixed top-0 z-50 w-full border-b border-white/10 bg-[#0d1b2a]/80 backdrop-blur">
-        <div className="flex items-center justify-between px-8 py-4">
+          <div className="flex items-center justify-between px-8 py-4">
           {/* Logo */}
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white font-bold text-lg">R</div>
