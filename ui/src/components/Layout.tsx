@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Users, ReceiptText, LogOut, Settings as SettingsIcon,
   ArrowLeftRight, Briefcase, Building2, CalendarCheck, CalendarRange, Palmtree, TrendingUp, MessageSquare,
   ChevronDown, Check, Plus, ShieldCheck, CreditCard, KeyRound, FileText, ClipboardList, Clock, Copy, CheckCircle2, Upload, Paperclip,
+  LayoutGrid, UserCircle, Crown,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '../stores/auth'
@@ -132,129 +133,136 @@ export default function Layout() {
     navigate('/login')
   }
 
+  type AppEntry = { icon: typeof LayoutGrid; label: string; active: boolean; onClick: (() => void) | undefined }
+  const apps: AppEntry[] = [
+    { icon: LayoutGrid, label: 'GESTÃO',  active: true,  onClick: undefined },
+    { icon: UserCircle, label: 'PORTAL',  active: false, onClick: () => window.open('/portal', '_blank') },
+    ...(isAdmin ? [{ icon: Crown, label: 'ADMIN', active: false, onClick: () => navigate('/admin') }] : []),
+  ]
+
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition ${
+      isActive ? 'bg-primary/15 text-primary' : 'text-white/45 hover:bg-white/5 hover:text-white/80'
+    }`
+
   return (
     <div className="flex h-full">
-      <aside className="flex w-60 flex-col bg-[#0f1117] text-white">
+      {/* ── Sidebar ── */}
+      <aside className="flex w-64 shrink-0 overflow-hidden" style={{ background: '#0b1220' }}>
 
-        {/* Logo */}
-        <div className="px-5 pt-5 pb-4">
-          <img src={logo} alt="RHadmin" className="h-7 w-auto" />
-        </div>
+        {/* Coluna esquerda — apps */}
+        <div className="flex w-14 flex-col items-center gap-1 border-r border-white/5 py-3" style={{ background: '#080e1a' }}>
+          <div className="mb-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/20">
+            <img src={logo} alt="RH" className="w-6" />
+          </div>
 
-        {/* Empresa + NIF */}
-        <div className="px-4 pt-5 pb-3" ref={dropRef}>
-          <button
-            onClick={() => setDropOpen((v) => !v)}
-            className="flex w-full items-center gap-2.5 rounded-xl bg-white/5 px-3 py-2.5 text-left transition hover:bg-white/10"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary font-bold text-white text-sm">
-              {active?.name?.charAt(0) ?? 'R'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="truncate text-xs font-semibold uppercase tracking-wide text-white">
-                {active?.name ?? 'Seleccionar empresa'}
-              </p>
-              {active?.nif && (
-                <p className="text-[10px] text-white/40">NIF: {active.nif}</p>
-              )}
-            </div>
-            <ChevronDown size={13} className={`shrink-0 text-white/30 transition ${dropOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          {dropOpen && (
-            <div className="mt-1 overflow-hidden rounded-xl border border-white/8 bg-[#1a1d27] py-1 shadow-2xl">
-              {companies.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => { setActive(c); setDropOpen(false) }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition hover:bg-white/8 hover:text-white"
-                >
-                  <Check size={12} className={active?.id === c.id ? 'text-primary' : 'opacity-0'} />
-                  <span className="flex-1 truncate">{c.name}</span>
-                </button>
-              ))}
-              <div className="mx-3 my-1 border-t border-white/8" />
-              <button
-                onClick={() => { navigate('/app/empresas'); setDropOpen(false) }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-white/40 transition hover:bg-white/8 hover:text-white/70"
-              >
-                <Plus size={11} /> Gerir empresas
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 space-y-0.5 px-3 pb-2">
-          {nav.filter(({ feature }) => !feature || hasFeature(feature)).map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                  isActive ? 'bg-white/10 text-white font-medium' : 'text-white/50 hover:bg-white/6 hover:text-white/90'
-                }`
-              }
+          {apps.map(({ icon: Icon, label, active: isActive, onClick }) => (
+            <button key={label} onClick={onClick} title={label}
+              className={`flex flex-col items-center gap-0.5 rounded-xl px-1 py-2 transition w-11 ${
+                isActive ? 'bg-primary/20 text-primary' : 'text-white/25 hover:bg-white/5 hover:text-white/60'
+              }`}
             >
-              <Icon size={16} className="shrink-0" />
-              {label}
-              {to === '/app/chat' && unreadMessages > 0 && (
-                <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                  {unreadMessages > 9 ? '9+' : unreadMessages}
-                </span>
-              )}
-            </NavLink>
+              <Icon size={19} />
+              <span className="text-[8px] font-bold tracking-widest leading-none uppercase">{label}</span>
+            </button>
           ))}
-          {isAdmin && hasFeature('api_keys') && (
-            <NavLink to="/app/api-keys"
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                  isActive ? 'bg-white/10 text-white font-medium' : 'text-white/50 hover:bg-white/6 hover:text-white/90'
-                }`
-              }
-            >
-              <KeyRound size={16} className="shrink-0" /> API / Integrações
-            </NavLink>
-          )}
-          {isAdmin && (
-            <NavLink to="/app/utilizadores"
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                  isActive ? 'bg-white/10 text-white font-medium' : 'text-white/50 hover:bg-white/6 hover:text-white/90'
-                }`
-              }
-            >
-              <ShieldCheck size={16} className="shrink-0" /> Utilizadores
-            </NavLink>
-          )}
-          <NavLink to="/app/subscricao"
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                isActive ? 'bg-white/10 text-white font-medium' : 'text-white/50 hover:bg-white/6 hover:text-white/90'
-              }`
-            }
-          >
-            <CreditCard size={16} className="shrink-0" /> Subscrição
-          </NavLink>
-        </nav>
 
-        {/* Rodapé */}
-        <div className="border-t border-white/8 px-3 py-3 space-y-0.5">
-          <NavLink to="/app/configuracoes"
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                isActive ? 'bg-white/10 text-white font-medium' : 'text-white/50 hover:bg-white/6 hover:text-white/90'
-              }`
-            }
-          >
-            <SettingsIcon size={16} className="shrink-0" /> Configuração
-          </NavLink>
-          <button onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/50 transition hover:bg-white/6 hover:text-white/90"
-          >
-            <LogOut size={16} /> Terminar sessão
-          </button>
+          <div className="mt-auto">
+            <button onClick={handleLogout} title={`${user?.name ?? ''} — Terminar sessão`}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-white/60 transition hover:bg-red-500/20 hover:text-red-400"
+            >
+              {user?.name?.charAt(0)?.toUpperCase() ?? '?'}
+            </button>
+          </div>
+        </div>
+
+        {/* Coluna direita — navegação */}
+        <div className="flex flex-1 flex-col min-w-0">
+
+          {/* Cabeçalho empresa */}
+          <div className="border-b border-white/5 px-3 py-3" ref={dropRef}>
+            <button onClick={() => setDropOpen(v => !v)}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/5"
+            >
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/30 text-xs font-bold text-primary">
+                {active?.name?.charAt(0)?.toUpperCase() ?? '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="truncate text-xs font-semibold text-white leading-tight">{active?.name ?? 'Empresa'}</p>
+                <p className="text-[10px] leading-tight text-white/30">
+                  {active?.nif ? `NIF: ${active.nif}` : getTenant()}
+                </p>
+              </div>
+              <ChevronDown size={12} className={`shrink-0 text-white/30 transition ${dropOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {dropOpen && (
+              <div className="mt-1 overflow-hidden rounded-lg border border-white/10 py-1 shadow-2xl" style={{ background: '#080e1a' }}>
+                {companies.map(c => (
+                  <button key={c.id} onClick={() => { setActive(c); setDropOpen(false) }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-white/60 transition hover:bg-white/8 hover:text-white"
+                  >
+                    <Check size={12} className={active?.id === c.id ? 'text-primary shrink-0' : 'opacity-0 shrink-0'} />
+                    <span className="flex-1 truncate">{c.name}</span>
+                  </button>
+                ))}
+                <div className="mx-2 my-1 border-t border-white/10" />
+                <button onClick={() => { navigate('/app/empresas'); setDropOpen(false) }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-[10px] text-white/30 transition hover:text-white/60"
+                >
+                  <Plus size={11} /> Gerir empresas
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Nav */}
+          <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+            <p className="px-2 pb-1 pt-2 text-[9px] font-bold uppercase tracking-widest text-white/20">Menu</p>
+
+            {nav.filter(({ feature }) => !feature || hasFeature(feature)).map(({ to, label, icon: Icon, end }) => (
+              <NavLink key={to} to={to} end={end} className={navLinkClass}>
+                <Icon size={14} className="shrink-0" />
+                <span className="truncate">{label}</span>
+                {to === '/app/chat' && unreadMessages > 0 && (
+                  <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                    {unreadMessages > 9 ? '9+' : unreadMessages}
+                  </span>
+                )}
+              </NavLink>
+            ))}
+
+            {isAdmin && hasFeature('api_keys') && (
+              <NavLink to="/app/api-keys" className={navLinkClass}>
+                <KeyRound size={14} className="shrink-0" />
+                <span className="truncate">API / Integrações</span>
+              </NavLink>
+            )}
+            {isAdmin && (
+              <NavLink to="/app/utilizadores" className={navLinkClass}>
+                <ShieldCheck size={14} className="shrink-0" />
+                <span className="truncate">Utilizadores</span>
+              </NavLink>
+            )}
+            <NavLink to="/app/subscricao" className={navLinkClass}>
+              <CreditCard size={14} className="shrink-0" />
+              <span className="truncate">Subscrição</span>
+            </NavLink>
+          </nav>
+
+          {/* Rodapé */}
+          <div className="border-t border-white/5 px-2 py-2">
+            <NavLink to="/app/configuracoes" className={navLinkClass}>
+              <SettingsIcon size={14} className="shrink-0" />
+              <span>Configuração</span>
+            </NavLink>
+            <button onClick={handleLogout}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-white/30 transition hover:bg-white/5 hover:text-red-400"
+            >
+              <LogOut size={14} className="shrink-0" />
+              Terminar sessão
+            </button>
+          </div>
         </div>
       </aside>
 

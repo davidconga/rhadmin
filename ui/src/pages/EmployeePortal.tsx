@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { LogOut, FileText, CheckCircle2, Clock, PenLine, User, ChevronDown, ChevronUp, KeyRound, Palmtree, CalendarRange, Plus, Send, ScrollText, TrendingUp, Star } from 'lucide-react'
+import { LogOut, FileText, CheckCircle2, Clock, PenLine, User, ChevronDown, ChevronUp, KeyRound, Palmtree, CalendarRange, Plus, Send, ScrollText, TrendingUp, Star, QrCode, Video, LogIn, LogOut as LogOutIcon } from 'lucide-react'
+import jsQR from 'jsqr'
 import { toast } from 'sonner'
 import axios from 'axios'
 import logo from '../assets/rhadmin-logo.svg'
@@ -66,6 +67,183 @@ function makeApi(slug: string, token: string) {
     baseURL: API,
     headers: { 'X-Tenant': slug, Authorization: `Bearer ${token}`, Accept: 'application/json' },
   })
+}
+
+// ── QR Scanner (funcionário) ─────────────────────────────────────────────────
+
+interface TodayAttendance {
+  check_in?: string; check_out?: string; status?: string; source?: string
+}
+
+function QrScanner({ slug, token }: { slug: string; token: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const scanRef = useRef<number | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [scanned, setScanned] = useState<string | null>(null)
+  const [type, setType] = useState<'in' | 'out'>('in')
+  const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [today, setToday] = useState<TodayAttendance | null>(null)
+  const [loadingToday, setLoadingToday] = useState(true)
+  const api = makeApi(slug, token)
+
+  // Carregar registo de hoje
+  useEffect(() => {
+    api.get('/attendances/qr/today')
+      .then(r => { setToday(r.data); if (r.data?.check_in && !r.data?.check_out) setType('out') })
+      .catch(() => {})
+      .finally(() => setLoadingToday(false))
+  }, [])
+
+  // Iniciar câmara
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play() }
+      setScanning(true)
+      tick()
+    } catch { toast.error('Não foi possível aceder à câmara') }
+  }
+
+  const stopCamera = () => {
+    if (scanRef.current) cancelAnimationFrame(scanRef.current)
+    const stream = videoRef.current?.srcObject as MediaStream | null
+    stream?.getTracks().forEach(t => t.stop())
+    if (videoRef.current) videoRef.current.srcObject = null
+    setScanning(false)
+  }
+
+  const tick = () => {
+    const video = videoRef.current; const canvas = canvasRef.current
+    if (!video || !canvas || video.readyState < 2) { scanRef.current = requestAnimationFrame(tick); return }
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(video, 0, 0)
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const code = jsQR(img.data, img.width, img.height)
+    if (code?.data) { setScanned(code.data); stopCamera(); return }
+    scanRef.current = requestAnimationFrame(tick)
+  }
+
+  const submit = async () => {
+    if (!scanned || !password) { toast.error('Leia o QR e introduza a senha'); return }
+    setSubmitting(true)
+    try {
+      navigator.geolocation.getCurrentPosition(async pos => {
+        try {
+          const { data } = await api.post('/attendances/qr/clock', {
+            token: scanned.split('qr=')[1] ?? scanned,
+            lat: pos.coords.latitude, lng: pos.coords.longitude,
+            type, password,
+          })
+          toast.success(data.message)
+          setToday(data.attendance)
+          setScanned(null); setPassword('')
+          if (type === 'in') setType('out')
+        } catch (e: unknown) {
+          const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+          toast.error(msg ?? 'Erro ao registar presença')
+        } finally { setSubmitting(false) }
+      }, () => { toast.error('Localização necessária'); setSubmitting(false) })
+    } catch { setSubmitting(false) }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Registo de hoje */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <h2 className="mb-3 font-semibold text-slate-800 flex items-center gap-2">
+          <Clock size={16} className="text-primary" /> Registo de hoje
+        </h2>
+        {loadingToday ? <p className="text-sm text-slate-400">A carregar…</p> : (
+          <div className="grid grid-cols-2 gap-3">
+            <div className={`rounded-xl p-3 text-center ${today?.check_in ? 'bg-green-50 border border-green-200' : 'bg-slate-50 border border-slate-200'}`}>
+              <LogIn size={18} className={`mx-auto mb-1 ${today?.check_in ? 'text-green-600' : 'text-slate-400'}`} />
+              <p className="text-xs text-slate-500">Entrada</p>
+              <p className={`font-bold text-sm ${today?.check_in ? 'text-green-700' : 'text-slate-400'}`}>
+                {today?.check_in ?? '—'}
+              </p>
+            </div>
+            <div className={`rounded-xl p-3 text-center ${today?.check_out ? 'bg-blue-50 border border-blue-200' : 'bg-slate-50 border border-slate-200'}`}>
+              <LogOutIcon size={18} className={`mx-auto mb-1 ${today?.check_out ? 'text-blue-600' : 'text-slate-400'}`} />
+              <p className="text-xs text-slate-500">Saída</p>
+              <p className={`font-bold text-sm ${today?.check_out ? 'text-blue-700' : 'text-slate-400'}`}>
+                {today?.check_out ?? '—'}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Scanner */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+        <h2 className="font-semibold text-slate-800 flex items-center gap-2">
+          <QrCode size={16} className="text-primary" /> Registar Presença por QR
+        </h2>
+
+        <div className="flex gap-2">
+          <button onClick={() => setType('in')}
+            className={`flex-1 rounded-xl py-2 text-sm font-medium transition ${type === 'in' ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            Entrada
+          </button>
+          <button onClick={() => setType('out')}
+            className={`flex-1 rounded-xl py-2 text-sm font-medium transition ${type === 'out' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            Saída
+          </button>
+        </div>
+
+        {/* Câmara */}
+        {!scanned && (
+          <div className="space-y-3">
+            <div className="relative overflow-hidden rounded-xl bg-black aspect-square max-w-xs mx-auto">
+              <video ref={videoRef} playsInline className="w-full h-full object-cover" />
+              {scanning && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="h-40 w-40 rounded-xl border-2 border-primary/70 animate-pulse" />
+                </div>
+              )}
+              {!scanning && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                  <Video size={32} className="text-white/50" />
+                </div>
+              )}
+            </div>
+            <canvas ref={canvasRef} className="hidden" />
+            <button onClick={scanning ? stopCamera : startCamera}
+              className={`w-full rounded-xl py-2.5 text-sm font-semibold transition ${scanning ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-primary text-white hover:bg-primary/90'}`}>
+              {scanning ? 'Parar câmara' : 'Abrir câmara e ler QR'}
+            </button>
+          </div>
+        )}
+
+        {/* QR lido — confirmar */}
+        {scanned && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 rounded-xl bg-green-50 border border-green-200 px-4 py-3">
+              <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+              <p className="text-sm text-green-700 font-medium">QR lido com sucesso</p>
+            </div>
+            <div>
+              <label className="label">Senha de confirmação</label>
+              <input className="input" type="password" placeholder="A sua palavra-passe"
+                value={password} onChange={e => setPassword(e.target.value)} />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setScanned(null) }}
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm text-slate-600 hover:bg-slate-50">
+                Ler novamente
+              </button>
+              <button onClick={submit} disabled={submitting || !password}
+                className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60">
+                {submitting ? 'A registar…' : `Confirmar ${type === 'in' ? 'entrada' : 'saída'}`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ── Signature Pad ────────────────────────────────────────────────────────────
@@ -136,7 +314,7 @@ export default function EmployeePortal() {
   const [employee, setEmployee] = useState<PortalEmployee | null>(null)
   const [slips, setSlips] = useState<Slip[]>([])
   const [loading, setLoading] = useState(false)
-  const [tab, setTab] = useState<'recibos' | 'contratos' | 'ferias' | 'escala' | 'perfil' | 'assinatura' | 'avaliacoes'>('recibos')
+  const [tab, setTab] = useState<'recibos' | 'contratos' | 'ferias' | 'escala' | 'perfil' | 'assinatura' | 'avaliacoes' | 'assiduidade'>('recibos')
   const [contracts, setContracts] = useState<ContractItem[]>([])
   const [expanded, setExpanded] = useState<number | null>(null)
   const [vacBalance, setVacBalance] = useState<VacationBalance | null>(null)
@@ -463,13 +641,14 @@ export default function EmployeePortal() {
         {/* Tabs */}
         <div className="flex gap-1 rounded-xl bg-slate-100 p-1 flex-wrap">
           {([
-            { key: 'recibos',    label: 'Recibos',     icon: FileText },
-            { key: 'contratos',  label: 'Contratos',   icon: ScrollText },
-            { key: 'ferias',     label: 'Férias',      icon: Palmtree },
-            { key: 'escala',     label: 'Escala',      icon: CalendarRange },
-            { key: 'avaliacoes', label: 'Avaliações',  icon: TrendingUp },
-            { key: 'perfil',     label: 'Perfil',      icon: User },
-            { key: 'assinatura', label: 'Assinatura',  icon: PenLine },
+            { key: 'recibos',     label: 'Recibos',      icon: FileText },
+            { key: 'contratos',   label: 'Contratos',    icon: ScrollText },
+            { key: 'ferias',      label: 'Férias',       icon: Palmtree },
+            { key: 'escala',      label: 'Escala',       icon: CalendarRange },
+            { key: 'assiduidade', label: 'Assiduidade',  icon: QrCode },
+            { key: 'avaliacoes',  label: 'Avaliações',   icon: TrendingUp },
+            { key: 'perfil',      label: 'Perfil',       icon: User },
+            { key: 'assinatura',  label: 'Assinatura',   icon: PenLine },
           ] as const).map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setTab(key)}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition min-w-[72px] ${tab === key ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -822,6 +1001,10 @@ export default function EmployeePortal() {
               )
             })}
           </div>
+        )}
+
+        {tab === 'assiduidade' && (
+          <QrScanner slug={slug} token={token} />
         )}
 
         {tab === 'assinatura' && (

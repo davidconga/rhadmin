@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { CalendarCheck, Users } from 'lucide-react'
+import { CalendarCheck, Users, QrCode, MapPin, Clock, RefreshCw } from 'lucide-react'
 import { api } from '../lib/api'
 import { MONTHS, monthName } from '../lib/format'
 import { Card, Spinner } from '../components/ui'
 import type { AttendanceMonth, AttendanceStatus, AttendanceSummaryRow } from '../types'
+import QRCodeLib from 'qrcode'
 
 const STATUS: Record<AttendanceStatus, { label: string; short: string; cls: string }> = {
   present: { label: 'Presente', short: 'P', cls: 'bg-green-500 text-white' },
@@ -21,7 +22,7 @@ const now = new Date()
 const pad = (n: number) => String(n).padStart(2, '0')
 
 export default function Attendance() {
-  const [tab, setTab] = useState<'folha' | 'resumo'>('folha')
+  const [tab, setTab] = useState<'folha' | 'resumo' | 'qr'>('folha')
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const years = [year - 1, year, year + 1]
@@ -33,29 +34,169 @@ export default function Attendance() {
           <h1 className="font-heading text-2xl font-bold text-primary">Assiduidade</h1>
           <p className="text-sm text-slate-500">Gestão de presenças e mapa mensal de assiduidade</p>
         </div>
-        <div className="flex items-center gap-2">
-          <select className="input w-36" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
-            {MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-          </select>
-          <select className="input w-28" value={year} onChange={(e) => setYear(Number(e.target.value))}>
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
+        {tab !== 'qr' && (
+          <div className="flex items-center gap-2">
+            <select className="input w-36" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+              {MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+            </select>
+            <select className="input w-28" value={year} onChange={(e) => setYear(Number(e.target.value))}>
+              {years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-slate-200">
-        {(['folha', 'resumo'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition ${
-              tab === t ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}>
-            {t === 'folha' ? <CalendarCheck size={16} /> : <Users size={16} />}
-            {t === 'folha' ? 'Folha mensal' : 'Resumo'}
-          </button>
-        ))}
+        <button onClick={() => setTab('folha')}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition ${tab === 'folha' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <CalendarCheck size={16} /> Folha mensal
+        </button>
+        <button onClick={() => setTab('resumo')}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition ${tab === 'resumo' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <Users size={16} /> Resumo
+        </button>
+        <button onClick={() => setTab('qr')}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition ${tab === 'qr' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <QrCode size={16} /> QR Code
+        </button>
       </div>
 
-      {tab === 'folha' ? <MonthSheet month={month} year={year} /> : <SummaryView month={month} year={year} />}
+      {tab === 'folha' && <MonthSheet month={month} year={year} />}
+      {tab === 'resumo' && <SummaryView month={month} year={year} />}
+      {tab === 'qr' && <QrGenerator />}
+    </div>
+  )
+}
+
+// ── QR Generator (admin) ──────────────────────────────────────────────────────
+
+function QrGenerator() {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [lat, setLat] = useState('')
+  const [lng, setLng] = useState('')
+  const [radius, setRadius] = useState(100)
+  const [minutes, setMinutes] = useState(60)
+  const [label, setLabel] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [qrUrl, setQrUrl] = useState<string | null>(null)
+  const [expiresAt, setExpiresAt] = useState<number | null>(null)
+  const [remaining, setRemaining] = useState<string | null>(null)
+  const [locating, setLocating] = useState(false)
+
+  // Countdown
+  useEffect(() => {
+    if (!expiresAt) return
+    const iv = setInterval(() => {
+      const secs = expiresAt - Math.floor(Date.now() / 1000)
+      if (secs <= 0) { setRemaining('Expirado'); clearInterval(iv); setQrUrl(null); return }
+      const m = Math.floor(secs / 60), s = secs % 60
+      setRemaining(`${m}m ${String(s).padStart(2, '0')}s`)
+    }, 1000)
+    return () => clearInterval(iv)
+  }, [expiresAt])
+
+  const locate = () => {
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      p => { setLat(String(p.coords.latitude)); setLng(String(p.coords.longitude)); setLocating(false) },
+      () => { toast.error('Não foi possível obter a localização'); setLocating(false) }
+    )
+  }
+
+  const generate = async () => {
+    if (!lat || !lng) { toast.error('Indique a localização'); return }
+    setLoading(true)
+    try {
+      const { data } = await api.post('/attendances/qr/generate', {
+        lat: parseFloat(lat), lng: parseFloat(lng),
+        radius_meters: radius, valid_minutes: minutes,
+        label: label || undefined,
+      })
+      const dataUrl = await QRCodeLib.toDataURL(data.url, { width: 300, margin: 2 })
+      setQrUrl(dataUrl)
+      setExpiresAt(data.expires_at)
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+      toast.error(msg ?? 'Erro ao gerar QR')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      {/* Formulário */}
+      <Card className="p-6 space-y-4">
+        <h2 className="font-heading font-semibold text-slate-800 flex items-center gap-2">
+          <QrCode size={18} className="text-primary" /> Gerar QR de Presença
+        </h2>
+
+        <div>
+          <label className="label">Local / Etiqueta</label>
+          <input className="input" placeholder="ex: Sede, Armazém…" value={label} onChange={e => setLabel(e.target.value)} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Latitude</label>
+            <input className="input font-mono text-sm" placeholder="-8.8383" value={lat} onChange={e => setLat(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Longitude</label>
+            <input className="input font-mono text-sm" placeholder="13.2344" value={lng} onChange={e => setLng(e.target.value)} />
+          </div>
+        </div>
+
+        <button onClick={locate} disabled={locating}
+          className="flex items-center gap-2 text-sm text-primary hover:underline disabled:opacity-50">
+          <MapPin size={14} /> {locating ? 'A obter localização…' : 'Usar a minha localização actual'}
+        </button>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Raio (metros)</label>
+            <input className="input" type="number" min={10} max={5000} value={radius} onChange={e => setRadius(Number(e.target.value))} />
+          </div>
+          <div>
+            <label className="label">Validade (minutos)</label>
+            <input className="input" type="number" min={1} max={1440} value={minutes} onChange={e => setMinutes(Number(e.target.value))} />
+          </div>
+        </div>
+
+        <button onClick={generate} disabled={loading}
+          className="btn-primary w-full flex items-center justify-center gap-2">
+          {loading ? <Spinner /> : <><QrCode size={16} /> Gerar QR Code</>}
+        </button>
+      </Card>
+
+      {/* QR Code */}
+      <Card className="p-6 flex flex-col items-center justify-center gap-4">
+        {qrUrl ? (
+          <>
+            <img src={qrUrl} alt="QR Presença" className="w-60 h-60 rounded-xl border border-slate-200" />
+            <div className={`flex items-center gap-2 text-sm font-semibold ${remaining === 'Expirado' ? 'text-red-600' : 'text-primary'}`}>
+              <Clock size={15} />
+              {remaining === 'Expirado' ? 'QR expirado' : `Expira em ${remaining}`}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={generate}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                <RefreshCw size={13} /> Renovar
+              </button>
+              <a href={qrUrl} download="qr-presenca.png"
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90">
+                Descarregar
+              </a>
+            </div>
+            <canvas ref={canvasRef} className="hidden" />
+          </>
+        ) : (
+          <div className="flex flex-col items-center gap-3 text-slate-400">
+            <QrCode size={64} strokeWidth={1} />
+            <p className="text-sm">Preencha o formulário e clique em <strong>Gerar QR Code</strong></p>
+          </div>
+        )}
+      </Card>
     </div>
   )
 }

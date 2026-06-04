@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\QrAttendanceController;
 use App\Http\Controllers\Api\ShiftController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BankController;
@@ -226,13 +227,17 @@ Route::middleware('tenant')->group(function () {
 
         // Assiduidade / Presenças — Profissional+
         Route::middleware('feature:attendance')->group(function () {
-        Route::get('/attendances/month', [AttendanceController::class, 'month']);
-        Route::get('/attendances/summary', [AttendanceController::class, 'summary']);
-        Route::middleware('role:admin,manager')->group(function () {
-            Route::post('/attendances', [AttendanceController::class, 'upsert']);
-            Route::post('/attendances/bulk', [AttendanceController::class, 'bulk']);
-            Route::delete('/attendances/{attendance}', [AttendanceController::class, 'destroy']);
-        });
+            Route::get('/attendances/month', [AttendanceController::class, 'month']);
+            Route::get('/attendances/summary', [AttendanceController::class, 'summary']);
+            // QR Attendance
+            Route::get('/attendances/qr/today', [QrAttendanceController::class, 'today']);
+            Route::post('/attendances/qr/clock', [QrAttendanceController::class, 'clock']);
+            Route::middleware('role:admin,manager')->group(function () {
+                Route::post('/attendances/qr/generate', [QrAttendanceController::class, 'generate']);
+                Route::post('/attendances', [AttendanceController::class, 'upsert']);
+                Route::post('/attendances/bulk', [AttendanceController::class, 'bulk']);
+                Route::delete('/attendances/{attendance}', [AttendanceController::class, 'destroy']);
+            });
         }); // feature:attendance
 
         // Férias — Profissional+
