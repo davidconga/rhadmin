@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, ReceiptText, LogOut, Settings as SettingsIcon,
-  ArrowLeftRight, Briefcase, Building2, CalendarCheck, CalendarRange, Palmtree, Layers, TrendingUp, MessageSquare,
+  ArrowLeftRight, Briefcase, Building2, CalendarCheck, CalendarRange, Palmtree, TrendingUp, MessageSquare,
   ChevronDown, Check, Plus, ShieldCheck, CreditCard, KeyRound, FileText, ClipboardList, Clock, Copy, CheckCircle2, Upload, Paperclip,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAuth } from '../stores/auth'
 import { useCompany } from '../stores/company'
 import { useSubscription } from '../stores/subscription'
@@ -133,114 +134,126 @@ export default function Layout() {
 
   return (
     <div className="flex h-full">
-      <aside className="flex w-64 flex-col bg-primary-800 text-white">
-        <div className="px-5 py-4">
-          <img src={logo} alt="RHadmin" className="w-full" />
+      <aside className="flex w-60 flex-col bg-[#0f1117] text-white">
+
+        {/* Logo */}
+        <div className="px-5 pt-5 pb-4">
+          <img src={logo} alt="RHadmin" className="h-7 w-auto" />
         </div>
 
-        {/* Switcher de empresa */}
-        <div className="px-3 pb-3" ref={dropRef}>
+        {/* Empresa + NIF */}
+        <div className="px-4 pt-5 pb-3" ref={dropRef}>
           <button
             onClick={() => setDropOpen((v) => !v)}
-            className="flex w-full items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-left text-sm transition hover:bg-white/15"
+            className="flex w-full items-center gap-2.5 rounded-xl bg-white/5 px-3 py-2.5 text-left transition hover:bg-white/10"
           >
-            <Building2 size={15} className="shrink-0 text-white/60" />
-            <span className="flex-1 truncate font-medium text-white">
-              {active?.name ?? 'Seleccionar empresa'}
-            </span>
-            <ChevronDown size={14} className={`shrink-0 text-white/50 transition ${dropOpen ? 'rotate-180' : ''}`} />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary font-bold text-white text-sm">
+              {active?.name?.charAt(0) ?? 'R'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="truncate text-xs font-semibold uppercase tracking-wide text-white">
+                {active?.name ?? 'Seleccionar empresa'}
+              </p>
+              {active?.nif && (
+                <p className="text-[10px] text-white/40">NIF: {active.nif}</p>
+              )}
+            </div>
+            <ChevronDown size={13} className={`shrink-0 text-white/30 transition ${dropOpen ? 'rotate-180' : ''}`} />
           </button>
 
           {dropOpen && (
-            <div className="mt-1 overflow-hidden rounded-lg border border-white/10 bg-primary-900 py-1 shadow-xl">
+            <div className="mt-1 overflow-hidden rounded-xl border border-white/8 bg-[#1a1d27] py-1 shadow-2xl">
               {companies.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => { setActive(c); setDropOpen(false) }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-white/80 transition hover:bg-white/10"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-white/70 transition hover:bg-white/8 hover:text-white"
                 >
-                  <Check size={14} className={active?.id === c.id ? 'text-white' : 'opacity-0'} />
+                  <Check size={12} className={active?.id === c.id ? 'text-primary' : 'opacity-0'} />
                   <span className="flex-1 truncate">{c.name}</span>
                 </button>
               ))}
-              <div className="mx-2 my-1 border-t border-white/10" />
+              <div className="mx-3 my-1 border-t border-white/8" />
               <button
                 onClick={() => { navigate('/app/empresas'); setDropOpen(false) }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-white/50 transition hover:bg-white/10 hover:text-white/80"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-white/40 transition hover:bg-white/8 hover:text-white/70"
               >
-                <Plus size={13} /> Gerir empresas
+                <Plus size={11} /> Gerir empresas
               </button>
             </div>
           )}
         </div>
 
-        <nav className="flex-1 space-y-1 px-3">
+        {/* Nav */}
+        <nav className="flex-1 space-y-0.5 px-3 pb-2">
           {nav.filter(({ feature }) => !feature || hasFeature(feature)).map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
+                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+                  isActive ? 'bg-white/10 text-white font-medium' : 'text-white/50 hover:bg-white/6 hover:text-white/90'
                 }`
               }
             >
-              <Icon size={18} />
+              <Icon size={16} className="shrink-0" />
               {label}
               {to === '/app/chat' && unreadMessages > 0 && (
-                <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
                   {unreadMessages > 9 ? '9+' : unreadMessages}
                 </span>
               )}
             </NavLink>
           ))}
           {isAdmin && hasFeature('api_keys') && (
-            <NavLink
-              to="/app/api-keys"
+            <NavLink to="/app/api-keys"
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
+                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+                  isActive ? 'bg-white/10 text-white font-medium' : 'text-white/50 hover:bg-white/6 hover:text-white/90'
                 }`
               }
             >
-              <KeyRound size={18} />
-              API / Integrações
+              <KeyRound size={16} className="shrink-0" /> API / Integrações
             </NavLink>
           )}
           {isAdmin && (
-            <NavLink
-              to="/app/utilizadores"
+            <NavLink to="/app/utilizadores"
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
+                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+                  isActive ? 'bg-white/10 text-white font-medium' : 'text-white/50 hover:bg-white/6 hover:text-white/90'
                 }`
               }
             >
-              <ShieldCheck size={18} />
-              Utilizadores
+              <ShieldCheck size={16} className="shrink-0" /> Utilizadores
             </NavLink>
           )}
-          <NavLink
-            to="/app/subscricao"
+          <NavLink to="/app/subscricao"
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                isActive ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
+              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+                isActive ? 'bg-white/10 text-white font-medium' : 'text-white/50 hover:bg-white/6 hover:text-white/90'
               }`
             }
           >
-            <CreditCard size={18} />
-            <span className="flex-1">Subscrição</span>
+            <CreditCard size={16} className="shrink-0" /> Subscrição
           </NavLink>
         </nav>
 
-        <div className="border-t border-white/10 p-3 space-y-1">
-          <div className="px-3 py-1.5">
-            <p className="text-[10px] uppercase tracking-wider text-white/30">Organização</p>
-            <p className="mt-0.5 font-mono text-xs font-semibold text-white/60">{getTenant()}</p>
-          </div>
-          <button onClick={handleLogout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/10 hover:text-white">
-            <LogOut size={18} /> Terminar sessão
+        {/* Rodapé */}
+        <div className="border-t border-white/8 px-3 py-3 space-y-0.5">
+          <NavLink to="/app/configuracoes"
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+                isActive ? 'bg-white/10 text-white font-medium' : 'text-white/50 hover:bg-white/6 hover:text-white/90'
+              }`
+            }
+          >
+            <SettingsIcon size={16} className="shrink-0" /> Configuração
+          </NavLink>
+          <button onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-white/50 transition hover:bg-white/6 hover:text-white/90"
+          >
+            <LogOut size={16} /> Terminar sessão
           </button>
         </div>
       </aside>
